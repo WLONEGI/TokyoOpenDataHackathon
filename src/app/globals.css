@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: var(--font-inter), var(--font-noto-sans-jp), system-ui, sans-serif;
+  }
+  
+  /* 日本語フォント優先 */
+  .font-japanese {
+    font-family: var(--font-noto-sans-jp), system-ui, sans-serif;
+  }
+  
+  /* スクロールバーのスタイリング */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+}
+
+@layer components {
+  /* ボタンコンポーネント */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200;
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500;
+  }
+  
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+  
+  .btn-voice {
+    @apply btn bg-tokyo-500 text-white hover:bg-tokyo-600 focus:ring-tokyo-400 rounded-full p-4 shadow-lg transform transition-all duration-200 hover:scale-105;
+  }
+  
+  /* 入力フィールド */
+  .input {
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm;
+  }
+  
+  /* カードコンポーネント */
+  .card {
+    @apply bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden;
+  }
+  
+  .card-padding {
+    @apply p-6;
+  }
+  
+  /* メッセージバブル */
+  .message-bubble {
+    @apply rounded-lg px-4 py-3 max-w-xs sm:max-w-md;
+  }
+  
+  .message-user {
+    @apply message-bubble bg-primary-500 text-white ml-auto;
+  }
+  
+  .message-assistant {
+    @apply message-bubble bg-gray-100 text-gray-900 mr-auto;
+  }
+  
+  /* 音声関連のアニメーション */
+  .voice-recording {
+    @apply animate-voice-pulse;
+  }
+  
+  .voice-visualizer {
+    @apply flex items-center justify-center space-x-1;
+  }
+  
+  .voice-bar {
+    @apply w-1 bg-tokyo-500 rounded-full transition-all duration-100;
+  }
+  
+  /* ローディングアニメーション */
+  .loading-dots {
+    @apply flex space-x-1;
+  }
+  
+  .loading-dot {
+    @apply w-2 h-2 bg-primary-500 rounded-full animate-bounce;
+  }
+  
+  .loading-dot:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+  
+  .loading-dot:nth-child(3) {
+    animation-delay: 0.2s;
+  }
+  
+  /* レスポンシブテキスト */
+  .text-responsive {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-responsive-lg {
+    @apply text-lg sm:text-xl lg:text-2xl;
+  }
+  
+  /* フォーカス状態の改善 */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  
+  /* エラー状態 */
+  .error-text {
+    @apply text-red-600 text-sm mt-1;
+  }
+  
+  .error-border {
+    @apply border-red-300 focus:border-red-500 focus:ring-red-500;
+  }
+}
+
+@layer utilities {
+  /* 日本語テキストの調整 */
+  .text-japanese {
+    font-feature-settings: "palt";
+    letter-spacing: 0.02em;
+  }
+  
+  /* 音声波形のアニメーション */
+  @keyframes wave {
+    0%, 100% { height: 4px; }
+    50% { height: 20px; }
+  }
+  
+  .wave-animation {
+    animation: wave 1s ease-in-out infinite;
+  }
+  
+  .wave-animation:nth-child(2) { animation-delay: 0.1s; }
+  .wave-animation:nth-child(3) { animation-delay: 0.2s; }
+  .wave-animation:nth-child(4) { animation-delay: 0.3s; }
+  .wave-animation:nth-child(5) { animation-delay: 0.4s; }
+  
+  /* グラデーション背景 */
+  .bg-gradient-tokyo {
+    background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
+  }
+  
+  /* タブレット・デスクトップでの中央配置 */
+  .center-container {
+    @apply max-w-4xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* SafeArea対応 */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

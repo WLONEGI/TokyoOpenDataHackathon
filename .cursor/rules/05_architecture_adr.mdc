@@ -1,0 +1,15 @@
+// file: .cursor/rules/05_architecture_adr.mdc
+// PURPOSE: アーキテクチャ境界遵守とADR記録を徹底
+// TYPE: relevant
+
+## MUST
+- UI↔API↔Service↔DB 等のレイヤリングを尊重し、越境を検知したら修正案を出す。
+- 重要な設計判断は ADR テンプレ（Title/Status/Context/Decision/Consequences）で記録するよう促す。
+- 代替案比較(Pros/Cons)と採用理由を提示させる。
+
+## SHOULD
+- 既存ADRとの整合性を確認し、矛盾があれば指摘。
+- 変化が多い設計要素はADRリンクをコードコメントに残すよう提案。
+
+## MUST NOT
+- 「とりあえず実装」だけの提案で終わらない。必ず背景・影響を言語化。
