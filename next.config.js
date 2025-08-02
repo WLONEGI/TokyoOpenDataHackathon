@@ -1,27 +1,31 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
+  typescript: {
+    ignoreBuildErrors: false,
   },
-  images: {
-    domains: ['storage.googleapis.com'],
-    formats: ['image/webp', 'image/avif'],
+  eslint: {
+    ignoreDuringBuilds: false,
   },
   env: {
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-    REDIS_URL: process.env.REDIS_URL,
-    GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+    CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
-  async headers() {
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+    };
+    return config;
+  },
+  headers: async () => {
     return [
       {
         source: '/api/:path*',
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
-            value: process.env.NODE_ENV === 'production' 
-              ? 'https://tokyo-ai-chat.metro.tokyo.lg.jp' 
-              : '*',
+            value: '*',
           },
           {
             key: 'Access-Control-Allow-Methods',
@@ -29,24 +33,11 @@ const nextConfig = {
           },
           {
             key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization, X-Session-ID',
+            value: 'Content-Type, Authorization',
           },
         ],
       },
     ];
-  },
-  webpack: (config, { dev, isServer }) => {
-    // 音声処理のためのWeb Audio API対応
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-        crypto: false,
-      };
-    }
-    
-    return config;
   },
 };
 

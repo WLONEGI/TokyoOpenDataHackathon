@@ -1,70 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import RedisService from '@/lib/services/RedisService';
-import { Session, UserPreferences, Language } from '@/types';
+import { SessionData, ApiResponse } from '@/types';
+import { SessionManager } from '@/lib/services/SessionManager';
 
-// セッション作成 API
+const sessionManager = SessionManager.getInstance();
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { language = 'ja', preferences = {} }: {
-      language?: Language;
-      preferences?: Partial<UserPreferences>;
-    } = body;
+    const { language = 'ja' } = body;
 
-    // デフォルト設定
-    const defaultPreferences: UserPreferences = {
-      voiceEnabled: true,
-      language: language as Language,
-      responseLength: 'normal',
-    };
-
-    const finalPreferences: UserPreferences = {
-      ...defaultPreferences,
-      ...preferences,
-    };
-
-    // セッションデータ作成
     const sessionId = uuidv4();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000); // 1時間後
+    const sessionData = sessionManager.createSession(
+      sessionId,
+      language as 'ja' | 'en' | 'zh' | 'ko'
+    );
 
-    const sessionData: Session = {
-      id: sessionId,
-      language: finalPreferences.language,
-      createdAt: now.toISOString(),
-      lastAccessedAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-      preferences: finalPreferences,
+    const response: ApiResponse<{ sessionId: string }> = {
+      success: true,
+      data: { sessionId },
+      message: 'Session created successfully',
     };
 
-    // Redisに保存
-    await RedisService.setSession(sessionId, sessionData, 3600); // 1時間のTTL
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        sessionId,
-        language: finalPreferences.language,
-        expiresAt: expiresAt.toISOString(),
-        preferences: finalPreferences,
-      },
-      timestamp: new Date().toISOString(),
-      requestId: uuidv4(),
-    }, { status: 201 });
-
+    return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error('Session creation error:', error);
+    console.error('Error creating session:', error);
     
-    return NextResponse.json({
+    const response: ApiResponse = {
       success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'セッションの作成に失敗しました',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      },
-      timestamp: new Date().toISOString(),
-      requestId: uuidv4(),
-    }, { status: 500 });
+      error: 'Failed to create session',
+    };
+
+    return NextResponse.json(response, { status: 500 });
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
+
+    if (!sessionId) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Session ID is required',
+      };
+      return NextResponse.json(response, { status: 400 });
+    }
+
+    const sessionData = sessionManager.getSession(sessionId);
+    if (!sessionData) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Session not found',
+      };
+      return NextResponse.json(response, { status: 404 });
+    }
+
+    const response: ApiResponse<SessionData> = {
+      success: true,
+      data: sessionData,
+    };
+
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error('Error retrieving session:', error);
+    
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to retrieve session',
+    };
+
+    return NextResponse.json(response, { status: 500 });
   }
 }

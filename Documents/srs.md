@@ -1,27 +1,34 @@
-# 東京都公式アプリ AI音声対話機能
-## 外部設計書（基本設計書）- MVP版
+# 東京都公式iOSアプリ AI音声対話機能
+## 外部設計書（基本設計書）- iOS Native版
 
 **文書情報**
-- **文書名**: 東京都公式アプリ AI音声対話機能 外部設計書（MVP版）
-- **版数**: 1.0
+- **文書名**: 東京都公式iOSアプリ AI音声対話機能 外部設計書（iOS Native版）
+- **版数**: 2.0
 - **作成日**: 2025年1月
 - **作成者**: 根岸祐樹
-- **備考**: MVP機能に限定した設計書
+- **備考**: iOSネイティブアプリ向け設計書
 
 ---
 
 ## 1. システム構成図
 
-### 1.1 MVP システム構成
+### 1.1 iOSネイティブアプリ システム構成
 
 ```mermaid
 graph TB
-    subgraph "東京都公式アプリ AI音声対話機能（MVP）"
-        subgraph "クライアント層"
-            UI[Web UI<br/>シンプルWebアプリ]
+    subgraph "東京都公式iOSアプリ AI音声対話機能"
+        subgraph "iOSネイティブアプリ層"
+            UI[SwiftUI/UIKit<br/>ネイティブUI]
             subgraph "音声処理"
-                ASR[音声認識<br/>WebRTC]
-                TTS[音声合成<br/>MediaRecorder]
+                SPEECH[Speech Framework<br/>音声認識]
+                AVTTS[AVSpeechSynthesizer<br/>音声合成]
+            end
+            subgraph "iOS機能"
+                PUSH[APNs<br/>プッシュ通知]
+                CORE[Core Location<br/>位置情報]
+                BIOMETRIC[Face ID/Touch ID<br/>生体認証]
+                SIRI[Siri Shortcuts<br/>音声起動]
+                WATCH[Apple Watch<br/>コンパニオンアプリ]
             end
         end
         

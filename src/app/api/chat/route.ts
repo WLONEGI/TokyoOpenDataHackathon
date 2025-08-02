@@ -1,283 +1,118 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-import RedisService from '@/lib/services/RedisService';
-import GeminiService from '@/lib/services/GeminiService';
-import { ChatRequest, ChatResponse, Language, DataSource } from '@/types';
+import { ChatRequest, ChatResponse, ApiResponse } from '@/types';
+import { GeminiService } from '@/lib/services/GeminiService';
+import { VectorSearchService } from '@/lib/services/VectorSearchService';
 
-// チャット処理 API
+let geminiService: GeminiService;
+let vectorSearchService: VectorSearchService;
+
+// Initialize services
+async function initializeServices() {
+  if (!geminiService) {
+    geminiService = new GeminiService();
+  }
+  if (!vectorSearchService) {
+    vectorSearchService = new VectorSearchService();
+    try {
+      await vectorSearchService.initializeIndex();
+    } catch (error) {
+      console.error('Failed to initialize vector search index:', error);
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
-  const startTime = Date.now();
-  const requestId = uuidv4();
-
   try {
+    await initializeServices();
+
     const body: ChatRequest = await request.json();
-    const sessionId = request.headers.get('X-Session-ID') || body.sessionId;
+    const { message, sessionId, language = 'ja', useVoice = false } = body;
 
-    // バリデーション
-    const validation = validateChatRequest(body);
-    if (!validation.success) {
-      return NextResponse.json({
+    if (!message || !sessionId) {
+      const response: ApiResponse = {
         success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: validation.error,
-          details: validation.details,
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      }, { status: 400 });
+        error: 'Message and sessionId are required',
+      };
+      return NextResponse.json(response, { status: 400 });
     }
 
-    if (!sessionId) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: 'SESSION_INVALID',
-          message: 'セッションIDが必要です',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      }, { status: 400 });
-    }
+    // Search for relevant information
+    let context = '';
+    let sources: any[] = [];
 
-    // レート制限チェック
-    const rateLimit = await RedisService.checkRateLimit(`session:${sessionId}`, 60, 60);
-    if (!rateLimit.allowed) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: 'RATE_LIMIT_EXCEEDED',
-          message: 'リクエスト回数の上限を超えました',
-          details: {
-            limit: 60,
-            window: 60,
-            retryAfter: rateLimit.resetTime - Math.floor(Date.now() / 1000),
-          },
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      }, {
-        status: 429,
-        headers: {
-          'X-RateLimit-Limit': '60',
-          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-          'X-RateLimit-Reset': rateLimit.resetTime.toString(),
-          'Retry-After': (rateLimit.resetTime - Math.floor(Date.now() / 1000)).toString(),
-        },
+    try {
+      const searchResult = await vectorSearchService.search({
+        text: message,
+        language,
+        limit: 3
       });
+
+      if (searchResult.items.length > 0) {
+        context = searchResult.items
+          .map(item => `${item.title}: ${item.content}`)
+          .join('\n\n');
+        
+        sources = searchResult.items.map(item => ({
+          id: item.id,
+          title: item.title,
+          url: item.metadata.source,
+          description: item.description,
+          category: item.category,
+          lastUpdated: item.metadata.lastUpdated
+        }));
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      // Continue without search results
     }
 
-    // セッション確認
-    const sessionData = await RedisService.getSession(sessionId);
-    if (!sessionData) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: 'SESSION_NOT_FOUND',
-          message: '指定されたセッションが見つかりません',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      }, { status: 404 });
+    // Generate response using Gemini
+    let responseText: string;
+    try {
+      if (context) {
+        responseText = await geminiService.generateText(message, context);
+      } else {
+        // Fallback prompt for childcare-related queries
+        const fallbackPrompt = `あなたは東京都の子育て支援に関する情報をお答えするAIアシスタントです。\n\nユーザーの質問: ${message}\n\n東京都の子育て支援制度、保育園、学童保育、子ども食堂などに関する一般的な情報を提供してください。具体的な手続きについては、各区市町村の窓口へのお問い合わせを案内してください。`;
+        responseText = await geminiService.generateText(fallbackPrompt);
+      }
+    } catch (error) {
+      console.error('Gemini API error:', error);
+      responseText = '申し訳ございませんが、現在サービスに問題が発生しています。しばらく後にもう一度お試しください。';
     }
 
-    // キャッシュチェック
-    const cacheKey = generateCacheKey(body.message, body.language || 'ja');
-    const cachedResponse = await RedisService.getCache(cacheKey);
-    
-    if (cachedResponse) {
-      // キャッシュヒット時の応答
-      return NextResponse.json({
-        success: true,
-        data: {
-          ...cachedResponse,
-          sessionId,
-          metadata: {
-            ...cachedResponse.metadata,
-            processingTime: Date.now() - startTime,
-            cached: true,
-          },
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
-    }
-
-    // AI応答生成
-    const aiResponse = await GeminiService.generateChatResponse({
-      userMessage: body.message,
-      language: body.language || 'ja',
-      sessionHistory: [], // TODO: セッション履歴の実装
-    });
-
-    // 関連データソースの検索（模擬実装）
-    const sources = await searchRelatedSources(body.message, body.language || 'ja');
-
-    // 音声合成URL生成（オプション）
+    // Generate audio if requested
     let audioUrl: string | undefined;
-    if (body.options?.includeAudio) {
-      audioUrl = await generateAudioUrl(aiResponse.content, body.language || 'ja', sessionId);
+    if (useVoice) {
+      try {
+        audioUrl = await geminiService.generateSpeech(responseText, language);
+      } catch (error) {
+        console.error('Speech generation failed:', error);
+        // Continue without audio
+      }
     }
 
-    // レスポンス構築
-    const response: ChatResponse = {
-      content: aiResponse.content,
-      sessionId,
+    const chatResponse: ChatResponse = {
+      response: responseText,
       audioUrl,
-      sources,
-      metadata: {
-        processingTime: aiResponse.processingTime,
-        confidence: aiResponse.confidence,
-        language: body.language || 'ja',
-      },
+      sources: sources.length > 0 ? sources : undefined
     };
 
-    // キャッシュに保存（5分間）
-    await RedisService.setCache(cacheKey, {
-      content: response.content,
-      sources: response.sources,
-      metadata: {
-        ...response.metadata,
-        cached: false,
-      },
-    }, 300);
-
-    // セッション最終アクセス時刻更新
-    await RedisService.updateSessionAccess(sessionId);
-
-    return NextResponse.json({
+    const response: ApiResponse<ChatResponse> = {
       success: true,
-      data: response,
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+      data: chatResponse,
+    };
+
+    return NextResponse.json(response, { status: 200 });
 
   } catch (error) {
     console.error('Chat API error:', error);
     
-    return NextResponse.json({
+    const response: ApiResponse = {
       success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'チャット処理中にエラーが発生しました',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    }, { status: 500 });
+      error: 'Failed to process chat request',
+    };
+
+    return NextResponse.json(response, { status: 500 });
   }
-}
-
-// バリデーション関数
-function validateChatRequest(body: any): { success: boolean; error?: string; details?: any } {
-  const errors: string[] = [];
-
-  if (!body.message) {
-    errors.push('Message is required');
-  } else if (typeof body.message !== 'string') {
-    errors.push('Message must be a string');
-  } else if (body.message.length > 1000) {
-    errors.push('Message is too long (max 1000 characters)');
-  } else if (body.message.trim().length === 0) {
-    errors.push('Message cannot be empty');
-  }
-
-  if (body.language && !['ja', 'en'].includes(body.language)) {
-    errors.push('Unsupported language');
-  }
-
-  return {
-    success: errors.length === 0,
-    error: errors.join(', '),
-    details: errors,
-  };
-}
-
-// キャッシュキー生成
-function generateCacheKey(message: string, language: Language): string {
-  const crypto = require('crypto');
-  const normalized = message.toLowerCase().trim();
-  const hash = crypto
-    .createHash('sha256')
-    .update(`${normalized}:${language}`)
-    .digest('hex');
-  return `chat_response:${hash}`;
-}
-
-// 関連データソース検索（模擬実装）
-async function searchRelatedSources(message: string, language: Language): Promise<DataSource[]> {
-  // TODO: 実際のVector Searchの実装
-  // 現在は模擬データを返す
-  
-  const mockSources: DataSource[] = [];
-  
-  // キーワードベースの簡易マッチング
-  const keywords = {
-    ja: {
-      '保育園': {
-        id: 'childcare_001',
-        title: '認可保育園一覧',
-        category: '保育サービス',
-        score: 0.89,
-        url: 'https://www.metro.tokyo.lg.jp/tosei/hodohappyo/press/2024/01/15/01.html',
-      },
-      '児童手当': {
-        id: 'allowance_001',
-        title: '児童手当制度について',
-        category: '経済的支援',
-        score: 0.92,
-        url: 'https://www.metro.tokyo.lg.jp/fukushi/kodomo/teate/jidouteate.html',
-      },
-      '予防接種': {
-        id: 'vaccine_001',
-        title: '予防接種スケジュール',
-        category: '健康サービス',
-        score: 0.85,
-        url: 'https://www.metro.tokyo.lg.jp/fukushi/hoken/yobousesshu/index.html',
-      },
-    },
-    en: {
-      'nursery': {
-        id: 'childcare_001_en',
-        title: 'Licensed Nursery School List',
-        category: 'Childcare Services',
-        score: 0.89,
-        url: 'https://www.metro.tokyo.lg.jp/english/tosei/hodohappyo/press/2024/01/15/01.html',
-      },
-      'allowance': {
-        id: 'allowance_001_en',
-        title: 'Child Allowance System',
-        category: 'Financial Support',
-        score: 0.92,
-        url: 'https://www.metro.tokyo.lg.jp/english/fukushi/kodomo/teate/jidouteate.html',
-      },
-      'vaccination': {
-        id: 'vaccine_001_en',
-        title: 'Vaccination Schedule',
-        category: 'Health Services',
-        score: 0.85,
-        url: 'https://www.metro.tokyo.lg.jp/english/fukushi/hoken/yobousesshu/index.html',
-      },
-    },
-  };
-
-  const messageWords = message.toLowerCase();
-  const langKeywords = keywords[language] || keywords.ja;
-
-  for (const [keyword, source] of Object.entries(langKeywords)) {
-    if (messageWords.includes(keyword.toLowerCase())) {
-      mockSources.push(source);
-    }
-  }
-
-  return mockSources;
-}
-
-// 音声URL生成（模擬実装）
-async function generateAudioUrl(text: string, language: Language, sessionId: string): Promise<string | undefined> {
-  // TODO: 実際の音声合成APIの実装
-  // 現在は模擬URLを返す
-  
-  const timestamp = Date.now();
-  return `/api/audio/temp/${sessionId}/output-${timestamp}.mp3`;
 }
