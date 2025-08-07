@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { OpenDataItem, DataSource } from '@/types';
+import { log } from '@/lib/logger';
 
 export class OpenDataService {
   private catalogBaseUrl = 'https://catalog.data.metro.tokyo.lg.jp';
@@ -17,15 +18,247 @@ export class OpenDataService {
     const items: OpenDataItem[] = [];
 
     try {
-      // Sample data for MVP (実際の実装では外部APIからデータを取得)
-      const sampleData = await this.generateSampleChildcareData();
-      items.push(...sampleData);
+      // Try to fetch real data from Tokyo Open Data
+      const realData = await this.fetchRealChildcareData();
+      if (realData.length > 0) {
+        items.push(...realData);
+        log.info('Successfully fetched real Tokyo Open Data', { count: realData.length });
+      } else {
+        // Fallback to sample data if real data is not available
+        const sampleData = await this.generateSampleChildcareData();
+        items.push(...sampleData);
+        log.warn('Using sample data as fallback', { count: sampleData.length });
+      }
 
       return items;
     } catch (error) {
+      log.error('Error fetching childcare data', error as Error);
       console.error('Error fetching childcare data:', error);
       return this.getFallbackChildcareData();
     }
+  }
+
+  private async fetchRealChildcareData(): Promise<OpenDataItem[]> {
+    const items: OpenDataItem[] = [];
+
+    try {
+      // Fetch data from multiple datasets in parallel
+      const datasetPromises = this.childcareDatasets.map(datasetId => 
+        this.fetchDatasetById(datasetId)
+      );
+
+      const results = await Promise.allSettled(datasetPromises);
+      
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value.length > 0) {
+          items.push(...result.value);
+          log.debug('Dataset fetched successfully', { 
+            datasetId: this.childcareDatasets[index], 
+            itemCount: result.value.length 
+          });
+        } else if (result.status === 'rejected') {
+          log.warn('Failed to fetch dataset', { 
+            datasetId: this.childcareDatasets[index],
+            error: result.reason 
+          });
+        }
+      });
+
+      return items;
+    } catch (error) {
+      log.error('Error in fetchRealChildcareData', error as Error);
+      return [];
+    }
+  }
+
+  private async fetchDatasetById(datasetId: string): Promise<OpenDataItem[]> {
+    try {
+      // First, get the dataset metadata
+      const metadataUrl = `${this.catalogBaseUrl}/api/3/action/package_show?id=${datasetId}`;
+      const metadataResponse = await axios.get(metadataUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Tokyo-AI-Assistant/1.0',
+        }
+      });
+
+      if (!metadataResponse.data.success) {
+        throw new Error(`Failed to fetch metadata for dataset ${datasetId}`);
+      }
+
+      const dataset = metadataResponse.data.result;
+      const items: OpenDataItem[] = [];
+
+      // Process each resource in the dataset
+      for (const resource of dataset.resources || []) {
+        if (this.isSupportedFormat(resource.format)) {
+          const resourceItems = await this.fetchResourceData(resource, dataset);
+          items.push(...resourceItems);
+        }
+      }
+
+      return items;
+    } catch (error) {
+      log.warn('Failed to fetch dataset', { datasetId, error: (error as Error).message });
+      return [];
+    }
+  }
+
+  private isSupportedFormat(format: string): boolean {
+    const supportedFormats = ['JSON', 'CSV', 'TSV', 'XML'];
+    return supportedFormats.includes(format?.toUpperCase());
+  }
+
+  private async fetchResourceData(resource: any, dataset: any): Promise<OpenDataItem[]> {
+    try {
+      const response = await axios.get(resource.url, {
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Tokyo-AI-Assistant/1.0',
+        }
+      });
+
+      // Convert the resource data to OpenDataItem format
+      return this.convertToOpenDataItems(response.data, resource, dataset);
+    } catch (error) {
+      log.warn('Failed to fetch resource data', { 
+        resourceId: resource.id, 
+        url: resource.url, 
+        error: (error as Error).message 
+      });
+      return [];
+    }
+  }
+
+  private convertToOpenDataItems(data: any, resource: any, dataset: any): OpenDataItem[] {
+    const items: OpenDataItem[] = [];
+    
+    try {
+      // Create a summary item for the entire dataset
+      const summaryItem: OpenDataItem = {
+        id: `${dataset.id}-summary`,
+        title: dataset.title || dataset.name,
+        description: dataset.notes || 'Tokyo Open Data dataset',
+        category: 'childcare',
+        tags: dataset.tags?.map((tag: any) => tag.name) || ['東京都', 'オープンデータ'],
+        content: this.generateDatasetSummary(data, dataset),
+        metadata: {
+          source: `東京都オープンデータ: ${dataset.title || dataset.name}`,
+          lastUpdated: new Date(dataset.metadata_modified || dataset.metadata_created),
+          language: 'ja',
+        }
+      };
+
+      items.push(summaryItem);
+
+      // If data is an array, create additional items for significant entries
+      if (Array.isArray(data) && data.length > 0) {
+        const significantEntries = data.slice(0, 5); // Take first 5 entries as examples
+        
+        significantEntries.forEach((entry, index) => {
+          if (entry && typeof entry === 'object') {
+            const entryItem: OpenDataItem = {
+              id: `${dataset.id}-entry-${index}`,
+              title: `${dataset.title} - ${this.extractTitle(entry)}`,
+              description: this.extractDescription(entry, dataset.title),
+              category: 'childcare',
+              tags: [...(dataset.tags?.map((tag: any) => tag.name) || []), 'データエントリ'],
+              content: this.formatEntryContent(entry),
+              metadata: {
+                source: `東京都オープンデータ: ${dataset.title}`,
+                lastUpdated: new Date(dataset.metadata_modified || dataset.metadata_created),
+                language: 'ja',
+              }
+            };
+
+            items.push(entryItem);
+          }
+        });
+      }
+
+      log.debug('Converted dataset to OpenDataItems', { 
+        datasetId: dataset.id, 
+        itemCount: items.length 
+      });
+
+      return items;
+    } catch (error) {
+      log.error('Error converting dataset to OpenDataItems', error as Error, {
+        datasetId: dataset.id,
+        resourceId: resource.id,
+      });
+      return [];
+    }
+  }
+
+  private generateDatasetSummary(data: any, dataset: any): string {
+    let summary = `${dataset.title || dataset.name}\n\n`;
+    
+    if (dataset.notes) {
+      summary += `${dataset.notes}\n\n`;
+    }
+
+    if (Array.isArray(data)) {
+      summary += `【データ概要】\n`;
+      summary += `- レコード数: ${data.length}件\n`;
+      
+      // Analyze data structure
+      if (data.length > 0 && typeof data[0] === 'object') {
+        const sampleKeys = Object.keys(data[0]);
+        summary += `- 項目: ${sampleKeys.slice(0, 10).join('、')}${sampleKeys.length > 10 ? '等' : ''}\n`;
+      }
+    } else if (typeof data === 'object') {
+      summary += `【データ種別】\nオブジェクト形式のデータ\n`;
+    }
+
+    summary += `\n【データソース】\n東京都オープンデータポータル\n`;
+    summary += `更新日: ${dataset.metadata_modified || dataset.metadata_created}\n`;
+
+    return summary;
+  }
+
+  private extractTitle(entry: any): string {
+    // Try to find a reasonable title from the entry
+    const titleFields = ['name', 'title', '名称', '施設名', '事業名', 'facility_name'];
+    
+    for (const field of titleFields) {
+      if (entry[field] && typeof entry[field] === 'string') {
+        return entry[field].substring(0, 50);
+      }
+    }
+
+    // Fallback: use first non-empty string value
+    for (const [key, value] of Object.entries(entry)) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return `${key}: ${value.substring(0, 30)}`;
+      }
+    }
+
+    return 'データエントリ';
+  }
+
+  private extractDescription(entry: any, datasetTitle: string): string {
+    const descFields = ['description', 'summary', '説明', '概要', 'details'];
+    
+    for (const field of descFields) {
+      if (entry[field] && typeof entry[field] === 'string') {
+        return entry[field].substring(0, 200);
+      }
+    }
+
+    return `${datasetTitle}のデータエントリです。`;
+  }
+
+  private formatEntryContent(entry: any): string {
+    let content = '';
+    
+    for (const [key, value] of Object.entries(entry)) {
+      if (value !== null && value !== undefined && value !== '') {
+        content += `**${key}**: ${value}\n`;
+      }
+    }
+
+    return content || 'データエントリの詳細情報';
   }
 
   private async generateSampleChildcareData(): Promise<OpenDataItem[]> {

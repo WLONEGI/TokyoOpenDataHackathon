@@ -1,76 +1,213 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-import { SessionData, ApiResponse } from '@/types';
 import { SessionManager } from '@/lib/services/SessionManager';
+import { validateLanguage } from '@/lib/validation';
+import { ErrorFactory, handleApiError, AppError } from '@/lib/errors';
+import { log, generateRequestId } from '@/lib/logger';
+import { ApiResponse, SupportedLanguage } from '@/types';
 
-const sessionManager = SessionManager.getInstance();
-
+// Create new session
 export async function POST(request: NextRequest) {
+  const requestId = generateRequestId();
+  const timer = log.performance('Create Session API', requestId);
+
   try {
-    const body = await request.json();
-    const { language = 'ja' } = body;
+    const sessionManager = SessionManager.getInstance();
+    const body = await request.json().catch(() => ({}));
 
-    const sessionId = uuidv4();
-    const sessionData = sessionManager.createSession(
-      sessionId,
-      language as 'ja' | 'en' | 'zh' | 'ko'
-    );
+    // Get client metadata
+    const clientIP = request.headers.get('x-forwarded-for') || 
+                    request.headers.get('x-real-ip') || 
+                    'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    
+    // Determine device type from user agent
+    const deviceType = /Mobile|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) 
+      ? 'mobile' as const 
+      : /Tablet|iPad/i.test(userAgent) 
+        ? 'tablet' as const 
+        : 'desktop' as const;
 
-    const response: ApiResponse<{ sessionId: string }> = {
+    // Validate language
+    let language: SupportedLanguage = 'ja';
+    if (body.language) {
+      const langValidation = validateLanguage(body.language);
+      if (langValidation.isValid) {
+        language = langValidation.sanitized as SupportedLanguage;
+      } else {
+        log.warn('Invalid language provided, using default', {
+          providedLanguage: body.language,
+          errors: langValidation.errors,
+        }, requestId);
+      }
+    }
+
+    const sessionId = await sessionManager.createSession(language, {
+      userAgent,
+      ipAddress: clientIP,
+      deviceType,
+    });
+
+    log.business('Session created', {
+      sessionId: sessionId.substring(0, 8) + '...',
+      language,
+      deviceType,
+      clientIP,
+    }, requestId);
+
+    const response: ApiResponse<{ sessionId: string; language: SupportedLanguage }> = {
       success: true,
-      data: { sessionId },
-      message: 'Session created successfully',
+      data: {
+        sessionId,
+        language,
+      },
     };
+
+    const duration = timer.end();
+    log.api('POST', '/api/session', 201, duration, requestId);
 
     return NextResponse.json(response, { status: 201 });
-  } catch (error) {
-    console.error('Error creating session:', error);
-    
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to create session',
-    };
 
-    return NextResponse.json(response, { status: 500 });
+  } catch (error) {
+    const appError = error instanceof AppError ? error : ErrorFactory.internalError(error);
+    const response = handleApiError(appError, 'ja');
+    
+    const duration = timer.end({ error: true });
+    
+    log.error('Session creation failed', error as Error, {
+      code: appError.code,
+      statusCode: appError.statusCode,
+    }, requestId);
+    
+    log.api('POST', '/api/session', appError.statusCode, duration, requestId);
+
+    return NextResponse.json(response, { status: appError.statusCode });
   }
 }
 
+// Get session information
 export async function GET(request: NextRequest) {
+  const requestId = generateRequestId();
+  const timer = log.performance('Get Session API', requestId);
+
   try {
-    const { searchParams } = new URL(request.url);
-    const sessionId = searchParams.get('sessionId');
+    const sessionManager = SessionManager.getInstance();
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get('sessionId');
 
     if (!sessionId) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Session ID is required',
-      };
-      return NextResponse.json(response, { status: 400 });
+      const error = ErrorFactory.validationFailed('Session ID is required');
+      const response = handleApiError(error, 'ja');
+      
+      const duration = timer.end();
+      log.api('GET', '/api/session', error.statusCode, duration, requestId);
+      
+      return NextResponse.json(response, { status: error.statusCode });
     }
 
-    const sessionData = sessionManager.getSession(sessionId);
-    if (!sessionData) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Session not found',
-      };
-      return NextResponse.json(response, { status: 404 });
+    const session = await sessionManager.getSession(sessionId);
+    if (!session) {
+      const error = ErrorFactory.sessionNotFound();
+      const response = handleApiError(error, 'ja');
+      
+      log.warn('Session not found in GET request', { 
+        sessionId: sessionId.substring(0, 8) + '...' 
+      }, requestId);
+      
+      const duration = timer.end();
+      log.api('GET', '/api/session', error.statusCode, duration, requestId);
+      
+      return NextResponse.json(response, { status: error.statusCode });
     }
 
-    const response: ApiResponse<SessionData> = {
+    const response: ApiResponse<typeof session> = {
       success: true,
-      data: sessionData,
+      data: session,
     };
+
+    const duration = timer.end();
+    log.api('GET', '/api/session', 200, duration, requestId);
 
     return NextResponse.json(response, { status: 200 });
+
   } catch (error) {
-    console.error('Error retrieving session:', error);
+    const appError = error instanceof AppError ? error : ErrorFactory.internalError(error);
+    const response = handleApiError(appError, 'ja');
     
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to retrieve session',
+    const duration = timer.end({ error: true });
+    
+    log.error('Session retrieval failed', error as Error, {
+      code: appError.code,
+      statusCode: appError.statusCode,
+    }, requestId);
+    
+    log.api('GET', '/api/session', appError.statusCode, duration, requestId);
+
+    return NextResponse.json(response, { status: appError.statusCode });
+  }
+}
+
+// Delete session
+export async function DELETE(request: NextRequest) {
+  const requestId = generateRequestId();
+  const timer = log.performance('Delete Session API', requestId);
+
+  try {
+    const sessionManager = SessionManager.getInstance();
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get('sessionId');
+
+    if (!sessionId) {
+      const error = ErrorFactory.validationFailed('Session ID is required');
+      const response = handleApiError(error, 'ja');
+      
+      const duration = timer.end();
+      log.api('DELETE', '/api/session', error.statusCode, duration, requestId);
+      
+      return NextResponse.json(response, { status: error.statusCode });
+    }
+
+    const deleted = await sessionManager.deleteSession(sessionId);
+    if (!deleted) {
+      const error = ErrorFactory.sessionNotFound();
+      const response = handleApiError(error, 'ja');
+      
+      log.warn('Session not found for deletion', { 
+        sessionId: sessionId.substring(0, 8) + '...' 
+      }, requestId);
+      
+      const duration = timer.end();
+      log.api('DELETE', '/api/session', error.statusCode, duration, requestId);
+      
+      return NextResponse.json(response, { status: error.statusCode });
+    }
+
+    log.business('Session deleted', {
+      sessionId: sessionId.substring(0, 8) + '...',
+    }, requestId);
+
+    const response: ApiResponse<{ deleted: boolean }> = {
+      success: true,
+      data: { deleted: true },
     };
 
-    return NextResponse.json(response, { status: 500 });
+    const duration = timer.end();
+    log.api('DELETE', '/api/session', 200, duration, requestId);
+
+    return NextResponse.json(response, { status: 200 });
+
+  } catch (error) {
+    const appError = error instanceof AppError ? error : ErrorFactory.internalError(error);
+    const response = handleApiError(appError, 'ja');
+    
+    const duration = timer.end({ error: true });
+    
+    log.error('Session deletion failed', error as Error, {
+      code: appError.code,
+      statusCode: appError.statusCode,
+    }, requestId);
+    
+    log.api('DELETE', '/api/session', appError.statusCode, duration, requestId);
+
+    return NextResponse.json(response, { status: appError.statusCode });
   }
 }

@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "es2017",
     "lib": ["dom", "dom.iterable", "es6"],
+    "types": ["jest", "node"],
     "downlevelIteration": true,
     "allowJs": true,
     "skipLibCheck": true,

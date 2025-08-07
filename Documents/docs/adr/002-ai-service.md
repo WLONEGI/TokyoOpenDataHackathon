@@ -1,5 +1,26 @@
 # ADR-002: AI音声対話サービスの選定
 
+## 改訂履歴
+
+| 版数 | 改訂日 | 改訂者 | 改訂内容 |
+|------|--------|--------|----------|
+| 1.0 | 2025-01-15 | 根岸祐樹 | 初版作成（Gemini Live API採用決定、入力タイプ別モデル使い分け追加） |
+
+## 目次
+
+1. [ステータス](#ステータス)
+2. [決定日](#決定日)
+3. [決定者](#決定者)
+4. [背景・コンテキスト](#背景コンテキスト)
+5. [決定内容](#決定内容)
+6. [理由・根拠](#理由根拠)
+7. [技術仕様](#技術仕様)
+8. [結果・影響](#結果影響)
+9. [追加決定事項（2025年1月更新）](#追加決定事項2025年1月更新)
+10. [代替実装](#代替実装)
+11. [関連決定](#関連決定)
+12. [参考資料](#参考資料)
+
 ## ステータス
 採用
 
@@ -139,17 +160,56 @@ gemini_config:
 2. **利用量監視**: APIクォータ管理とアラート設定
 3. **段階的導入**: プレビュー→GA移行計画
 
-## 代替実装
+## 追加決定事項（2025年1月更新）
+
+### 入力タイプ別モデル使い分けの理由
+
+#### 1. パフォーマンス最適化
+- **テキスト処理**: `gemini-2.5-flash`は高速なテキスト処理に最適化
+- **音声処理**: ネイティブオーディオ対応モデルで音声品質向上
+
+#### 2. コスト効率化
+- テキスト入力時は軽量モデルを使用してコスト削減
+- 音声入力時のみ高機能モデルを使用
+
+#### 3. 出力制御の明確化
+- テキスト入力: `shouldPlayAudio: false`
+- 音声入力: `shouldPlayAudio: true`
 
 ### フォールバック構成
 ```typescript
+export class GeminiService {
+  async generateText(prompt: string, context?: string, language: SupportedLanguage = 'ja', useAudioModel: boolean = false): Promise<string> {
+    const model = useAudioModel ? this.audioModel : this.textModel;
+    
+    try {
+      const result = await model.generateContent(fullPrompt);
+      return result.response.text();
+    } catch (error) {
+      // オーディオモデルエラー時はテキストモデルにフォールバック
+      if (useAudioModel) {
+        console.warn('Audio model error, falling back to text model');
+        const fallbackResult = await this.textModel.generateContent(fullPrompt);
+        return fallbackResult.response.text();
+      }
+      throw error;
+    }
+  }
+}
+```
+
+## 代替実装
+
+### 従来のフォールバック構成（参考）
+```typescript
+// 将来的な外部サービス連携時の構成例
 class VoiceService {
-  private primary = new GeminiLiveClient();
+  private primary = new GeminiService();
   private fallback = new OpenAIClient();
   
   async processVoice(audio: Buffer): Promise<Response> {
     try {
-      return await this.primary.process(audio);
+      return await this.primary.processAudio(audio);
     } catch (error) {
       console.warn('Gemini API error, falling back to OpenAI');
       return await this.fallback.process(audio);

@@ -1,1 +1,1 @@
-self.__NEXT_FONT_MANIFEST="{\"pages\":{},\"app\":{\"/Users/negishi/Documents/develop/Hackathon/TokyoOpenDataHackathon/src/app/layout\":[\"static/media/e4af272ccee01ff0-s.p.woff2\"]},\"appUsingSizeAdjust\":true,\"pagesUsingSizeAdjust\":false}"
+self.__NEXT_FONT_MANIFEST="{\"pages\":{},\"app\":{\"/Users/negishi/Documents/develop/Hackathon/TokyoOpenDataHackathon/src/app/layout\":[\"static/media/e4af272ccee01ff0-s.p.woff2\",\"static/media/f2dba9fbcf2f771b-s.p.woff2\"]},\"appUsingSizeAdjust\":true,\"pagesUsingSizeAdjust\":false}"

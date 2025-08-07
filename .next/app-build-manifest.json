@@ -3,11 +3,15 @@
     "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
+      "static/chunks/vendors-_app-pages-browser_node_modules_lucide-react_dist_esm_icons_circle-alert_js-_app-page-f076eb.js",
+      "static/chunks/vendors-_app-pages-browser_node_modules_lucide-react_dist_esm_icons_brain_js-_app-pages-brows-e4a1c0.js",
       "static/chunks/app/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
+      "static/chunks/vendors-_app-pages-browser_node_modules_lucide-react_dist_esm_icons_circle-alert_js-_app-page-f076eb.js",
+      "static/css/vendors-node_modules_next_font_google_target_css-node_modules_next_font_google_target_css.css",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ]

@@ -47,13 +47,23 @@ export async function PUT(
     const { sessionId } = params;
     const body = await request.json();
 
-    const updatedSession = sessionManager.updateSession(sessionId, body);
-    if (!updatedSession) {
+    const updateResult = await sessionManager.updateSession(sessionId, body);
+    if (!updateResult) {
       const response: ApiResponse = {
         success: false,
         error: 'Session not found',
       };
       return NextResponse.json(response, { status: 404 });
+    }
+
+    // Get the updated session data
+    const updatedSession = await sessionManager.getSession(sessionId);
+    if (!updatedSession) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Session not found after update',
+      };
+      return NextResponse.json(response, { status: 500 });
     }
 
     const response: ApiResponse<SessionData> = {

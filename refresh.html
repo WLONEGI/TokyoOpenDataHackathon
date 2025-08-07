@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cache Refresh</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+</head>
+<body>
+    <h2>🔄 キャッシュをクリアしています...</h2>
+    <p>モダンUIが表示されない場合は、以下の手順を実行してください：</p>
+    
+    <h3>ブラウザ別のハードリフレッシュ方法：</h3>
+    <ul>
+        <li><strong>Chrome/Firefox</strong>: Ctrl+Shift+R (Mac: Cmd+Shift+R)</li>
+        <li><strong>Safari</strong>: Cmd+Option+R</li>
+        <li><strong>Edge</strong>: Ctrl+Shift+R</li>
+    </ul>
+
+    <h3>または開発者ツールから：</h3>
+    <ol>
+        <li>F12で開発者ツールを開く</li>
+        <li>ネットワークタブに移動</li>
+        <li>"Disable cache"にチェック</li>
+        <li>ページをリロード</li>
+    </ol>
+
+    <script>
+        // ブラウザキャッシュをクリア
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                for (let name of names) {
+                    caches.delete(name);
+                }
+            });
+        }
+        
+        // 3秒後にメインページにリダイレクト
+        setTimeout(() => {
+            window.location.href = 'http://localhost:3000?t=' + new Date().getTime();
+        }, 3000);
+    </script>
+</body>
+</html>

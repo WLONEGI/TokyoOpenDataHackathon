@@ -1,16 +1,94 @@
 # 東京都公式アプリ AI音声対話機能
-## 詳細設計書（MVP版）
+## 詳細設計書（実装版）
 
 **文書情報**
-- **文書名**: 東京都公式アプリ AI音声対話機能 詳細設計書（MVP版）
-- **版数**: 1.0
+- **文書名**: 東京都公式アプリ AI音声対話機能 詳細設計書（実装版）
+- **版数**: 2.0
 - **作成日**: 2025年1月
 - **作成者**: 根岸祐樹
-- **備考**: MVP機能に限定した詳細設計書
+- **備考**: 実装完了版詳細設計書
+
+---
+
+## 改訂履歴
+
+| 版数 | 改訂日 | 改訂者 | 改訂内容 |
+|------|--------|--------|----------|
+| 1.0 | 2025-01-15 | 根岸祐樹 | 初版作成（MVP機能設計） |
+| 2.0 | 2025-01-15 | 根岸祐樹 | 実装内容反映・高度AI機能追加・技術スタック更新 |
+
+---
+
+## 目次
+
+1. [アーキテクチャ詳細設計](#1-アーキテクチャ詳細設計)
+   - 1.1 [システム全体アーキテクチャ](#11-システム全体アーキテクチャ)
+   - 1.2 [コンポーネント設計](#12-コンポーネント設計)
+2. [データフロー設計](#2-データフロー設計)
+   - 2.1 [チャット機能のデータフロー](#21-チャット機能のデータフロー)
+   - 2.2 [データ処理フロー](#22-データ処理フロー)
+3. [コンポーネント詳細設計](#3-コンポーネント詳細設計)
+   - 3.1 [フロントエンドコンポーネント](#31-フロントエンドコンポーネント)
+   - 3.2 [バックエンドサービス詳細](#32-バックエンドサービス詳細)
+4. [状態管理設計](#4-状態管理設計)
+   - 4.1 [フロントエンド状態管理](#41-フロントエンド状態管理)
+   - 4.2 [バックエンド状態管理](#42-バックエンド状態管理)
+5. [エラーハンドリング設計](#5-エラーハンドリング設計)
+   - 5.1 [エラー分類・定義](#51-エラー分類定義)
+   - 5.2 [エラーハンドリング実装](#52-エラーハンドリング実装)
+   - 5.3 [リトライ機能](#53-リトライ機能)
+6. [パフォーマンス最適化設計](#6-パフォーマンス最適化設計)
+   - 6.1 [フロントエンド最適化](#61-フロントエンド最適化)
+   - 6.2 [バックエンド最適化](#62-バックエンド最適化)
 
 ---
 
 ## 1. アーキテクチャ詳細設計
+
+### 1.0 設計方針・根拠
+
+#### 1.0.1 設計目標の明確化
+
+**上位要件からの設計目標**：
+本詳細設計は、PRDで定義された「誰一人取り残さない、インクルーシブな行政サービスの実現」という基本理念を技術的に実現することを目的としています。
+
+**具体的な設計目標**：
+1. **アクセシビリティ最優先**: 音声インターフェースによる言語・身体的制約の解消
+2. **高パフォーマンス**: 平均応答時間3秒以内の実現
+3. **高可用性**: 99.5%以上のシステム稼働率確保
+4. **拡張性**: 9,742件の東京都オープンデータへの対応
+
+#### 1.0.2 設計原則
+
+**1. レイヤー分離原則**
+- **根拠**: 保守性・拡張性要件に対応し、各層の独立性を確保
+- **効果**: 機能追加時の影響範囲限定、並行開発の効率化
+
+**2. マイクロサービス指向**
+- **根拠**: SRSで要求されたシステム拡張性・保守性要件
+- **効果**: 各サービスの独立デプロイ、障害の局所化
+
+**3. AI-First アーキテクチャ**
+- **根拠**: 知的対話による差別化要件
+- **効果**: ChatGPT/Claude同等レベルの対話品質実現
+
+**4. データ統合最適化**
+- **根拠**: 9,742件のオープンデータ活用要件
+- **効果**: リアルタイム検索・動的データ統合の実現
+
+#### 1.0.3 技術選定根拠
+
+**Next.js 14 App Router採用理由**：
+- **要件適合性**: PWA要件、レスポンシブ要件への最適対応
+- **開発効率**: TypeScript完全対応、API Routes統合
+- **パフォーマンス**: Edge Runtime、Streaming SSR対応
+- **保守性**: 標準フレームワークによる長期保守性確保
+
+**Google Gemini API統合理由**：
+- **音声処理品質**: 95%以上の音声認識精度要件に対応
+- **多言語対応**: 将来の中国語・韓国語拡張要件に対応
+- **統合性**: テキスト・音声・埋め込み生成の一元化
+- **信頼性**: Google Cloud Platformとの統合による安定性
 
 ### 1.1 システム全体アーキテクチャ
 
@@ -82,25 +160,33 @@
 - **フレームワーク**: Next.js 14.2+
 - **言語**: TypeScript 5.0+
 - **UIライブラリ**: Tailwind CSS 3.4+
-- **状態管理**: Zustand
-- **音声処理**: Web Audio API + MediaRecorder API
+- **状態管理**: React Hooks (useState, useEffect)
+- **音声処理**: Web Audio API + MediaRecorder API + Web Speech API
 - **HTTPクライアント**: fetch API
 - **ビルドツール**: Webpack 5 (Next.js内蔵)
+- **PWA対応**: Service Worker, Web App Manifest
+- **多言語対応**: 日本語・英語・中国語・韓国語
+- **アクセシビリティ**: ARIA対応、スクリーンリーダー対応
 
 **バックエンド**
 - **ランタイム**: Node.js 20+
 - **フレームワーク**: Next.js 14.2+ (App Router)
 - **言語**: TypeScript 5.0+
-- **セッション管理**: Redis 7.0+
-- **ファイル処理**: csv-parser, xlsx
+- **セッション管理**: Redis 7.0+ (フォールバック: メモリベース)
+- **ファイル処理**: csv-parser, xlsx, pdf-parse
 - **HTTP**: 標準fetch API
+- **AI統合**: Google Gemini API (2.5-flash, text-embedding-004)
+- **データ処理**: CKAN API, 多形式データ変換
+- **キャッシュ**: Redis + インメモリキャッシュ
+- **監視**: パフォーマンス監視、ヘルスチェック
 
 **インフラ**
-- **クラウド**: Google Cloud Platform
-- **コンテナ**: Cloud Run
-- **ストレージ**: Cloud Storage
-- **キャッシュ**: Cloud Memorystore (Redis)
-- **監視**: Cloud Monitoring + Cloud Logging
+- **デプロイ**: Vercel / Google Cloud Platform
+- **コンテナ**: Cloud Run (オプション)
+- **ストレージ**: ローカルキャッシュ + Redis
+- **キャッシュ**: Redis (フォールバック: インメモリ)
+- **監視**: 内蔵パフォーマンス監視 + ログ管理
+- **外部API**: Google Gemini API, 東京都CKAN API
 
 ### 1.2 コンポーネント設計
 
@@ -170,43 +256,77 @@ src/
         └── en.json
 ```
 
-#### 1.2.2 バックエンドサービス構成
+#### 1.2.2 バックエンドサービス構成（実装版）
 
 ```
-src/services/
-├── chat/
-│   ├── ChatService.ts           # チャット処理サービス
-│   ├── MessageProcessor.ts      # メッセージ処理
-│   ├── ResponseGenerator.ts     # 応答生成
-│   └── ContextManager.ts        # コンテキスト管理
-├── voice/
-│   ├── VoiceService.ts          # 音声処理サービス
-│   ├── SpeechRecognizer.ts      # 音声認識
-│   ├── SpeechSynthesizer.ts     # 音声合成
-│   └── AudioProcessor.ts        # 音声データ処理
-├── search/
-│   ├── SearchService.ts         # 検索サービス
-│   ├── VectorSearchClient.ts    # ベクトル検索
-│   ├── DataIndexer.ts           # データインデックス化
-│   └── ResultRanker.ts          # 結果ランキング
-├── data/
-│   ├── DataService.ts           # データ管理サービス
-│   ├── OpenDataClient.ts        # オープンデータ取得
-│   ├── DataProcessor.ts         # データ処理
-│   └── DataValidator.ts         # データ検証
-├── session/
-│   ├── SessionService.ts        # セッション管理
-│   ├── RedisClient.ts           # Redis接続
-│   └── SessionValidator.ts      # セッション検証
-├── integration/
-│   ├── GeminiClient.ts          # Gemini API接続
-│   ├── CloudStorageClient.ts    # Cloud Storage接続
-│   └── MonitoringClient.ts      # 監視サービス
-└── common/
-    ├── Logger.ts                # ログ処理
-    ├── ErrorHandler.ts          # エラーハンドリング
-    ├── Config.ts                # 設定管理
-    └── Utils.ts                 # 共通ユーティリティ
+src/lib/services/
+├── AIOrchestrator.ts            # 高度AI推論エンジン ★実装済み
+│   ├── 深度意図分析
+│   ├── Chain of Thought推論
+│   ├── メタ認知機能
+│   └── コンテキスト統合
+├── ServiceManager.ts            # サービス管理 ★実装済み
+│   ├── シングルトンパターン
+│   ├── メモリリーク防止
+│   └── パフォーマンス統計
+├── GeminiService.ts             # Gemini API統合 ★実装済み
+│   ├── textModel: gemini-2.5-flash
+│   ├── embeddingModel: text-embedding-004
+│   ├── 音声処理、意図分析
+│   └── 多言語プロンプト
+├── VectorSearchService.ts       # ベクトル検索 ★実装済み
+│   ├── インメモリDB実装
+│   ├── コサイン類似度計算
+│   └── 検索結果ランキング
+├── OpenDataService.ts           # オープンデータ統合 ★実装済み
+│   ├── 子育て支援データ取得
+│   ├── データ正規化・構造化
+│   └── キャッシュ機能
+├── TokyoOpenDataService.ts      # 動的オープンデータ検索 ★実装済み
+│   ├── CKAN API統合
+│   ├── リアルタイムデータセット検索
+│   ├── 多形式データ処理　
+│   └── インテリジェントデータマッチング
+├── SessionManager.ts            # セッション管理 ★実装済み
+│   ├── セッション作成・更新・削除
+│   ├── メッセージ履歴管理
+│   └── Redis連携
+├── RedisService.ts              # キャッシュ・セッション管理 ★実装済み
+│   ├── レート制限実装
+│   ├── セッションデータ保存
+│   ├── 応答キャッシュ
+│   └── フォールバック機能
+├── AutonomousSearchAgent.ts     # 自律的検索エージェント ★実装済み
+├── TimeContextService.ts        # 時間コンテキスト管理 ★実装済み
+├── GeospatialContextService.ts  # 地理空間コンテキスト管理 ★実装済み
+├── SpeechService.ts             # 音声合成サービス ★実装済み
+├── CloudStorageService.ts       # クラウドストレージ連携 ★実装済み
+└── VertexVectorSearchService.ts # Vertex AI Vector Search統合 ★実装済み
+
+※ 注記: 「Vertex Vector Search」はインメモリベクトルDBで代替実装
+※ 音声合成はWeb Speech APIでクライアントサイド実装
+```
+
+#### 1.2.3 実装された高度AI機能 ★NEW
+
+```
+src/lib/services/AIOrchestrator.ts
+├── 深度意図分析 (Deep Intent Analysis)
+│   ├── 明示的意図抽出
+│   ├── 潜在的ニーズ発見
+│   └── コンテキスト依存的理解
+├── メタ認知機能 (Meta-Cognitive Capabilities)
+│   ├── 自己能力評価
+│   ├── 回答品質自己診断
+│   └── 不確実性の明示的表現
+├── Chain of Thought推論
+│   ├── 段階的思考プロセス
+│   ├── 推論ステップ記録
+│   └── 中間結果検証
+└── 動的実行計画生成
+    ├── リアルタイム戦略立案
+    ├── コンテキスト対応処理順序
+    └── フォールバック戦略
 ```
 
 ---
@@ -215,7 +335,7 @@ src/services/
 
 ### 2.1 チャット機能のデータフロー
 
-#### 2.1.1 テキストチャットフロー
+#### 2.1.1 テキストチャットフロー（全オープンデータ対応版）
 
 ```mermaid
 sequenceDiagram
@@ -223,9 +343,10 @@ sequenceDiagram
     participant UI as ChatContainer
     participant API as Chat API
     participant CS as ChatService
-    participant GC as GeminiClient
-    participant SS as SearchService
-    participant VVS as VectorSearch
+    participant VSS as VectorSearchService
+    participant TODS as TokyoOpenDataService
+    participant CKAN as CKAN API
+    participant GS as GeminiService
     participant SM as SessionManager
     participant R as Redis
 
@@ -237,20 +358,31 @@ sequenceDiagram
     R-->>SM: session data
     SM-->>CS: session context
     
-    CS->>SS: 6.searchRelevantData()
-    SS->>VVS: 7.vectorSearch()
-    VVS-->>SS: search results
-    SS-->>CS: relevant data
+    CS->>VSS: 6.search() - 動的検索開始
     
-    CS->>GC: 8.generateResponse()
-    GC-->>CS: AI response
+    Note over VSS,TODS: 動的検索フロー
+    VSS->>TODS: 7.fetchRelevantData()
+    TODS->>GS: 8.extractSearchParameters() - AI分析
+    GS-->>TODS: keywords, categories, tags
+    TODS->>CKAN: 9.package_search API
+    CKAN-->>TODS: datasets metadata
+    TODS->>GS: 10.rankDatasetsByRelevance() - AI評価
+    GS-->>TODS: ranked datasets
+    TODS->>CKAN: 11.resource data fetch
+    CKAN-->>TODS: actual data
+    TODS-->>VSS: converted OpenDataItems
     
-    CS->>SM: 9.updateSession()
-    SM->>R: 10.SET session
+    VSS-->>CS: search results
+    
+    CS->>GS: 12.generateResponse()
+    GS-->>CS: AI response
+    
+    CS->>SM: 13.updateSession()
+    SM->>R: 14.SET session
     
     CS-->>API: response data
     API-->>UI: response JSON
-    UI-->>U: 11.応答表示
+    UI-->>U: 15.応答表示
 ```
 
 #### 2.1.2 音声チャットフロー
@@ -261,7 +393,7 @@ sequenceDiagram
     participant UI as VoiceInput
     participant API as Voice API
     participant VS as VoiceService
-    participant GC as GeminiClient
+    participant GS as GeminiService
     participant CS as ChatService
     participant SS as SearchService
 
@@ -290,25 +422,59 @@ sequenceDiagram
 
 ### 2.2 データ処理フロー
 
-#### 2.2.1 オープンデータ取得・処理フロー
+#### 2.2.1 動的オープンデータ取得・処理フロー
 
 ```mermaid
 flowchart TD
-    A[開始] --> B[データセット一覧取得]
-    B --> C{更新チェック}
-    C -->|更新あり| D[ファイルダウンロード]
-    C -->|更新なし| M[終了]
-    D --> E[ファイル形式判定]
-    E --> F{ファイル形式}
-    F -->|CSV| G[CSV解析]
-    F -->|XLS/XLSX| H[Excel解析]
-    F -->|JSON| I[JSON解析]
-    G --> J[データ正規化]
-    H --> J
-    I --> J
-    J --> K[ベクトル化]
-    K --> L[インデックス更新]
-    L --> M[終了]
+    A[ユーザークエリ受信] --> B[AI検索パラメータ抽出]
+    B --> C[キーワード、カテゴリ、組織、タグ抽出]
+    C --> D[CKAN package_search API呼び出し]
+    D --> E[データセット一覧取得]
+    E --> F{結果あり？}
+    F -->|なし| G[フォールバックデータ返却]
+    F -->|あり| H[AI関連度評価]
+    H --> I[データセットランキング]
+    I --> J[上位データセット選択]
+    J --> K[並列リソース取得]
+    
+    K --> L{ファイル形式判定}
+    L -->|CSV| M[CSV解析]
+    L -->|XLS/XLSX| N[Excel解析]
+    L -->|JSON| O[JSON解析]
+    L -->|PDF| P[PDF解析]
+    L -->|GeoJSON| Q[GeoJSON解析]
+    
+    M --> R[OpenDataItem変換]
+    N --> R
+    O --> R
+    P --> R
+    Q --> R
+    
+    R --> S[メタデータ付与]
+    S --> T[キャッシュ保存]
+    T --> U[結果返却]
+    
+    G --> U
+```
+
+#### 2.2.2 CKAN API連携フロー
+
+```mermaid
+flowchart TD
+    A[TokyoOpenDataService] --> B[検索パラメータ構築]
+    B --> C[CKAN Query作成]
+    C --> D[/api/3/action/package_search]
+    D --> E[データセットメタデータ取得]
+    E --> F[各データセットのリソース一覧]
+    F --> G{リソースタイプチェック}
+    G -->|サポート形式| H[リソースデータ取得]
+    G -->|非サポート形式| I[スキップ]
+    H --> J[データ解析・変換]
+    J --> K[OpenDataItem作成]
+    K --> L[結果集約]
+    I --> L
+    L --> M[関連度ソート]
+    M --> N[最終結果返却]
 ```
 
 #### 2.2.2 ベクトル検索処理フロー
@@ -421,9 +587,169 @@ interface Message {
 
 ### 3.2 バックエンドサービス詳細
 
-#### 3.2.1 ChatService
+#### 3.2.0 サービス設計方針
 
-**目的**: チャット処理の中心的なサービス
+**設計根拠**：
+高度AI機能と大規模データ処理を両立するため、以下の設計方針を採用：
+
+1. **AIOrchestrator中心設計**
+   - **根拠**: ChatGPT/Claude同等レベルの対話品質要件
+   - **実装**: Chain of Thought推論、メタ認知機能の統合
+
+2. **動的データ統合**
+   - **根拠**: 9,742件の東京都オープンデータ活用要件
+   - **実装**: CKAN API統合、リアルタイム検索機能
+
+3. **フォールバック戦略**
+   - **根拠**: 99.5%の稼働率要件
+   - **実装**: Redis→インメモリ、外部API→ローカル処理
+
+4. **パフォーマンス最適化**
+   - **根拠**: 平均応答時間3秒以内の要件
+   - **実装**: 並列処理、キャッシュ戦略、サービス管理
+
+#### 3.2.1 TokyoOpenDataService ★NEW
+
+**目的**: 東京都オープンデータカタログとの動的連携
+
+**設計根拠**：
+- **要件**: PRDで定義された「全てのオープンデータ活用」要件
+- **課題**: 静的データでは最新性・網羅性が不十分
+- **解決**: CKAN APIによるリアルタイムデータ取得
+
+**主要メソッド**:
+```typescript
+class TokyoOpenDataService {
+  async fetchRelevantData(
+    query: string, 
+    language: SupportedLanguage = 'ja'
+  ): Promise<OpenDataItem[]> {
+    // 1. AIを使って検索パラメータ抽出
+    const searchParams = await this.extractSearchParameters(query, language);
+    
+    // 2. CKAN APIでデータセット検索
+    const datasets = await this.searchDatasets(searchParams);
+    
+    // 3. AI関連度評価でデータセットランキング
+    const rankedDatasets = await this.rankDatasetsByRelevance(
+      datasets, query, language
+    );
+    
+    // 4. 上位データセットから実データ取得・変換
+    const allItems: OpenDataItem[] = [];
+    for (const dataset of rankedDatasets.slice(0, 5)) {
+      const items = await this.processDataset(dataset, query, language);
+      allItems.push(...items);
+    }
+    
+    return allItems;
+  }
+
+  private async extractSearchParameters(
+    query: string, 
+    language: SupportedLanguage
+  ): Promise<{
+    keywords: string[];
+    categories: string[];
+    organizations: string[];
+    tags: string[];
+  }> {
+    // Gemini AIを使用してクエリから検索パラメータを抽出
+    const prompt = this.buildSearchExtractionPrompt(query, language);
+    const response = await this.geminiService.generateText(prompt);
+    return JSON.parse(response);
+  }
+
+  private async searchDatasets(searchParams: any): Promise<CKANDataset[]> {
+    // CKAN package_search APIを使用してデータセット検索
+    const searchQuery = this.buildCKANQuery(searchParams);
+    const url = `${this.apiBaseUrl}/action/package_search`;
+    
+    const response = await axios.get(url, {
+      params: {
+        q: searchQuery,
+        rows: 50,
+        sort: 'score desc, metadata_modified desc'
+      }
+    });
+    
+    return response.data.result.results;
+  }
+
+  private async rankDatasetsByRelevance(
+    datasets: CKANDataset[], 
+    query: string, 
+    language: SupportedLanguage
+  ): Promise<CKANDataset[]> {
+    // AIを使用してデータセットの関連度をランキング
+    const prompt = this.buildRankingPrompt(query, datasets, language);
+    const response = await this.geminiService.generateText(prompt);
+    const ranking = JSON.parse(response);
+    
+    return ranking.map((item: any) => datasets[item.index]);
+  }
+}
+```
+
+#### 3.2.2 VectorSearchService（拡張版）
+
+**目的**: 3段階フォールバック検索の統合管理
+
+**検索戦略**:
+```typescript
+class VectorSearchService {
+  async search(query: SearchQuery): Promise<SearchResult> {
+    // 1. 動的オープンデータ検索（優先）
+    if (this.useDynamicSearch && query.text) {
+      try {
+        const dynamicResults = await this.tokyoOpenDataService
+          .fetchRelevantData(query.text, query.language);
+        
+        if (dynamicResults.length > 0) {
+          return {
+            items: dynamicResults,
+            searchMethod: 'dynamic',
+            total: dynamicResults.length,
+            query: query.text,
+            processingTime: Date.now() - startTime,
+            usedCache: false
+          };
+        }
+      } catch (error) {
+        // フォールバックに進む
+      }
+    }
+    
+    // 2. Vertex Vector Search（セカンダリ）
+    if (this.useVertexSearch && query.text) {
+      try {
+        const vertexResult = await this.vertexVectorSearchService
+          .search(query);
+        
+        if (vertexResult.items.length > 0) {
+          return {
+            ...vertexResult,
+            searchMethod: 'vertex'
+          };
+        }
+      } catch (error) {
+        // フォールバックに進む
+      }
+    }
+    
+    // 3. ローカルベクトル検索（フォールバック）
+    const localResults = await this.localVectorSearch(query);
+    return {
+      ...localResults,
+      searchMethod: 'local'
+    };
+  }
+}
+```
+
+#### 3.2.3 ChatService（更新版）
+
+**目的**: 新しい検索サービスとの統合
 
 **主要メソッド**:
 ```typescript
@@ -436,14 +762,19 @@ class ChatService {
     // 1. セッション取得
     const session = await this.sessionService.getSession(sessionId);
     
-    // 2. 関連データ検索
-    const searchResults = await this.searchService.searchRelevantData(
-      message,
-      language
-    );
+    // 2. 拡張された統合検索実行
+    const searchResults = await this.vectorSearchService.search({
+      text: message,
+      language,
+      limit: 3
+    });
     
-    // 3. コンテキスト構築
-    const context = await this.buildContext(session, searchResults);
+    // 3. コンテキスト構築（検索方法による調整）
+    const context = await this.buildContext(
+      session, 
+      searchResults, 
+      searchResults.searchMethod
+    );
     
     // 4. AI応答生成
     const response = await this.geminiClient.generateResponse(
@@ -456,21 +787,36 @@ class ChatService {
     await this.sessionService.updateSession(sessionId, {
       userMessage: message,
       assistantResponse: response,
+      searchMethod: searchResults.searchMethod,
       timestamp: new Date()
     });
     
     return {
-      content: response,
-      sources: searchResults,
-      sessionId
+      response: response,
+      sources: this.extractSources(searchResults.items),
+      shouldPlayAudio: false
     };
   }
 
   private async buildContext(
     session: Session,
-    searchResults: SearchResult[]
+    searchResults: SearchResult,
+    searchMethod?: string
   ): Promise<string> {
-    // コンテキスト構築ロジック
+    let context = '';
+    
+    if (searchResults.items.length > 0) {
+      context = searchResults.items
+        .map(item => `${item.title}: ${item.content}`)
+        .join('\n\n');
+      
+      // 動的検索の場合、データソース情報を追加
+      if (searchMethod === 'dynamic') {
+        context += '\n\n【データソース】\n東京都オープンデータポータルから取得した最新情報';
+      }
+    }
+    
+    return context;
   }
 }
 ```
@@ -489,11 +835,12 @@ class VoiceService {
     // 1. 音声データ前処理
     const audioBuffer = await this.processAudioData(audioBlob);
     
-    // 2. Gemini Live API呼び出し
-    const transcript = await this.geminiClient.speechToText(
+    // 2. Gemini Audio Model API呼び出し
+    const result = await this.geminiService.processAudio(
       audioBuffer,
-      language
+      'audio/webm'
     );
+    const transcript = result.text;
     
     // 3. 結果検証
     if (!transcript || transcript.trim().length === 0) {
@@ -510,11 +857,9 @@ class VoiceService {
     // 1. テキスト前処理
     const processedText = this.preprocessText(text);
     
-    // 2. Gemini Live API呼び出し
-    const audioBuffer = await this.geminiClient.textToSpeech(
-      processedText,
-      language
-    );
+    // 2. Web Speech API使用（クライアントサイド）
+    // サーバーサイドでは音声合成を行わない
+    return null; // クライアントでWeb Speech APIを使用
     
     return audioBuffer;
   }

@@ -1,35 +1,17 @@
 {
-  "name": "東京都公式iOSアプリ AI音声対話機能",
-  "short_name": "東京都AI対話アプリ",
-  "description": "東京都民、外国人住民、観光客向けの行政サービス案内システム",
+  "name": "Tokyo AI Assistant - 東京都AI音声対話",
+  "short_name": "Tokyo AI",
+  "description": "Modern AI voice chat app for Tokyo residents, international residents, and tourists",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#003366",
+  "background_color": "#f8fafc",
+  "theme_color": "#0088ff",
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "ja",
   "dir": "ltr",
-  "categories": ["government", "productivity", "education"],
+  "categories": ["government", "productivity", "education", "lifestyle"],
   "icons": [
-    {
-      "src": "/icons/icon-72x72.png",
-      "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-96x96.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-128x128.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
     {
       "src": "/icons/icon-144x144.png",
       "sizes": "144x144",
@@ -37,20 +19,8 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-152x152.png",
-      "sizes": "152x152",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-384x384.png",
-      "sizes": "384x384",
       "type": "image/png",
       "purpose": "any maskable"
     },
@@ -67,42 +37,18 @@
       "purpose": "any"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/screenshot-mobile.png",
-      "sizes": "375x812",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshots/screenshot-desktop.png",
-      "sizes": "1920x1080",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
-  ],
   "shortcuts": [
     {
       "name": "新しいチャット",
-      "short_name": "新規チャット",
+      "short_name": "新規チャット", 
       "description": "新しい会話を開始",
       "url": "/?action=new-chat",
       "icons": [
         {
-          "src": "/icons/icon-96x96.png",
-          "sizes": "96x96"
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192"
         }
       ]
     }
-  ],
-  "share_target": {
-    "action": "/share",
-    "method": "POST",
-    "enctype": "multipart/form-data",
-    "params": {
-      "title": "title",
-      "text": "text",
-      "url": "url"
-    }
-  }
+  ]
 }

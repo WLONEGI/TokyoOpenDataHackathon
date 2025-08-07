@@ -1,50 +1,123 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Send, Mic, MicOff, Settings, Globe, RotateCcw } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Mic, MicOff, Globe, RotateCcw, Sparkles, Volume2, VolumeX, Brain } from 'lucide-react';
 import { useChat } from '@/lib/hooks/useChat';
+import { useChatStreaming } from '@/lib/hooks/useChatStreaming';
 import MessageBubble from './MessageBubble';
+import { ThemeToggleSimple } from '@/components/ui/ThemeToggle';
+import { useToast } from '@/components/ui/Toast';
+import { TypingIndicator, LoadingOverlay } from '@/components/ui/LoadingStates';
+import { I18nProvider, useI18n } from '@/lib/i18n/I18nProvider';
+import { LocationButton } from '@/components/ui/LocationButton';
+import { ThinkingProcess } from '@/components/ui/ThinkingProcess';
 
-export default function ChatInterface() {
+function ChatInterfaceInner() {
+  const { t, language, setLanguage } = useI18n();
+  
+  // Track language changes in the inner component
+  useEffect(() => {
+    console.log('ChatInterfaceInner: Language changed to:', language, 'Title:', t.nav.title);
+  }, [language, t.nav.title]);
   const [inputText, setInputText] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const [showLanguageSelect, setShowLanguageSelect] = useState(false);
+  const [enableSpeech, setEnableSpeech] = useState(true);
+  const [thinkingMode, setThinkingMode] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const toast = useToast();
 
   const {
     messages,
     isLoading,
     isRecording,
-    language,
+    transcript,
+    finalTranscript,
+    interimTranscript,
+    speechRecognitionSupported,
+    location,
+    locationError,
+    locationLoading,
+    locationPermission,
     sendMessage,
     startRecording,
     stopRecording,
     clearChat,
-    setLanguage,
+    setLanguage: setChatLanguage,
+    cancelSpeech,
+    isSpeaking,
+    speechSupported,
+    resetTranscript,
+    requestLocation,
+    clearLocation,
   } = useChat({
-    language: 'ja',
+    language: language,
     enableVoice: true,
+    enableLocation: true,
   });
+
+  // Streaming functionality
+  const {
+    streamingState,
+    startStreaming,
+    stopStreaming,
+    clearStreamingState
+  } = useChatStreaming();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-focus input on load
+  // Auto-focus input on load and setup keyboard shortcuts
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+
+    // Keyboard shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Focus input field with '/' key
+      if (e.key === '/' && e.target !== inputRef.current) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      
+      // Clear chat with Ctrl+K or Cmd+K
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        clearChat();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [clearChat]);
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
+    if (!inputText.trim() || isLoading || streamingState.isStreaming) return;
     
     const messageText = inputText.trim();
     setInputText('');
     
-    await sendMessage(messageText);
+    try {
+      if (thinkingMode) {
+        // 思考モード: ストリーミングAPIを使用
+        // セッションIDを取得 (useChatフックから)
+        const sessionId = messages.length > 0 ? 'default-session' : 'default-session'; // 実際の実装では適切なセッションIDを取得
+        await startStreaming(messageText, sessionId, language);
+      } else {
+        // 通常モード: 既存のsendMessage使用
+        await sendMessage(messageText, enableSpeech);
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast.error(
+        t.errors.messageFailed,
+        t.errors.messageFailedDescription
+      );
+      // メッセージを入力フィールドに戻す
+      setInputText(messageText);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -55,78 +128,101 @@ export default function ChatInterface() {
   };
 
   const handleVoiceToggle = async () => {
-    if (isRecording) {
-      await stopRecording();
-    } else {
-      await startRecording();
+    try {
+      if (isRecording) {
+        await stopRecording();
+      } else {
+        await startRecording();
+        toast.info(t.success.voiceRecordingStarted, t.success.voiceRecordingStartedDescription);
+      }
+    } catch (error) {
+      console.error('Voice recording error:', error);
+      toast.error(
+        t.errors.voiceRecordingError,
+        t.errors.voiceRecordingErrorDescription
+      );
     }
   };
 
-  const handlePlayAudio = (audioUrl: string) => {
-    if (audioRef.current) {
-      audioRef.current.src = audioUrl;
-      audioRef.current.play();
-    }
-  };
 
   const getLanguageLabel = (lang: string) => {
     const labels = {
       ja: '日本語',
       en: 'English',
       zh: '中文',
-      ko: '한국어'
+      ko: '한국어',
     };
     return labels[lang as keyof typeof labels] || '日本語';
   };
 
-  const getWelcomeMessage = () => {
-    const messages = {
-      ja: 'こんにちは！東京都の子育て支援情報についてお答えします。保育園、学童保育、子育て支援制度などについてお気軽にお聞きください。',
-      en: 'Hello! I can help you with childcare support information in Tokyo. Feel free to ask about nursery schools, after-school care, childcare support systems, and more.',
-      zh: '您好！我可以为您提供东京都的育儿支援信息。请随时询问保育园、学童保育、育儿支援制度等相关问题。',
-      ko: '안녕하세요! 도쿄도의 육아 지원 정보에 대해 답변해 드립니다. 보육원, 학동보육, 육아지원제도 등에 대해 언제든지 문의해 주세요.'
-    };
-    return messages[language as keyof typeof messages] || messages.ja;
-  };
-
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-tokyo-blue text-white p-4 shadow-md">
-        <div className="flex items-center justify-between">
+    <div className="flex flex-col h-screen bg-primary-50 dark:bg-primary-900">
+      {/* Modern Header */}
+      <header 
+        className="bg-white dark:bg-primary-800 border-b border-primary-100 dark:border-primary-700 px-6 py-4"
+        role="banner"
+        aria-label={t.a11y.applicationHeader}
+      >
+        <div className="flex items-center justify-between max-w-6xl mx-auto">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-              <span className="text-tokyo-blue font-bold text-sm">都</span>
+            <div className="w-10 h-10 bg-gradient-to-br from-tokyo-500 to-tokyo-700 rounded-xl flex items-center justify-center shadow-sm">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">東京都AI音声対話</h1>
-              <p className="text-sm text-blue-100">子育て支援情報アシスタント</p>
+              <h1 className="font-semibold text-primary-900 dark:text-primary-100 text-lg">{t.nav.title}</h1>
+              <p className="text-sm text-primary-600 dark:text-primary-300">
+                {t.nav.subtitle}
+              </p>
             </div>
           </div>
           
           <div className="flex items-center space-x-2">
+            {/* Location Button */}
+            <LocationButton
+              location={location}
+              loading={locationLoading}
+              error={locationError}
+              permission={locationPermission}
+              onRequestLocation={requestLocation}
+              onClearLocation={clearLocation}
+              className="h-9"
+            />
+            
             {/* Language Selector */}
             <div className="relative">
               <button
                 onClick={() => setShowLanguageSelect(!showLanguageSelect)}
-                className="flex items-center space-x-1 px-3 py-1 rounded-md bg-white bg-opacity-20 hover:bg-opacity-30 transition-colors"
+                className="btn-ghost flex items-center space-x-2"
               >
                 <Globe className="w-4 h-4" />
                 <span className="text-sm">{getLanguageLabel(language)}</span>
               </button>
               
               {showLanguageSelect && (
-                <div className="absolute top-full right-0 mt-2 bg-white rounded-md shadow-lg border z-50 min-w-32">
-                  {['ja', 'en'].map((lang) => (
+                <div className="absolute top-full right-0 mt-2 bg-white dark:bg-primary-800 rounded-xl shadow-lg border border-primary-100 dark:border-primary-700 z-50 min-w-36 overflow-hidden">
+                  {['ja', 'en', 'zh', 'ko'].map((lang) => (
                     <button
                       key={lang}
                       onClick={async () => {
-                        await setLanguage(lang as 'ja' | 'en');
-                        setShowLanguageSelect(false);
+                        try {
+                          const newLang = lang as 'ja' | 'en' | 'zh' | 'ko';
+                          console.log('Language change from', language, 'to', newLang);
+                          
+                          // I18nProviderの言語を更新
+                          setLanguage(newLang);
+                          
+                          // チャットサービスの言語も更新
+                          await setChatLanguage(newLang);
+                          
+                          setShowLanguageSelect(false);
+                        } catch (error) {
+                          console.error('Language change error:', error);
+                          toast.error(t.errors.languageChangeFailed);
+                        }
                       }}
-                      className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                        language === lang ? 'bg-gray-100 font-medium' : ''
-                      } ${lang === 'ja' ? 'rounded-t-md' : ''} ${lang === 'en' ? 'rounded-b-md' : ''}`}
+                      className={`block w-full text-left px-4 py-3 text-sm hover:bg-primary-50 dark:hover:bg-primary-700 transition-colors ${
+                        language === lang ? 'bg-primary-50 dark:bg-primary-700 font-medium text-primary-900 dark:text-primary-100' : 'text-primary-600 dark:text-primary-300'
+                      }`}
                     >
                       {getLanguageLabel(lang)}
                     </button>
@@ -135,11 +231,48 @@ export default function ChatInterface() {
               )}
             </div>
             
+            {/* Speech Toggle Button */}
+            {speechSupported && (
+              <button
+                onClick={() => {
+                  if (isSpeaking()) {
+                    cancelSpeech();
+                  }
+                  setEnableSpeech(!enableSpeech);
+                }}
+                className={`btn-ghost ${enableSpeech ? 'text-tokyo-600' : 'text-primary-400'}`}
+                title={enableSpeech ? t.nav.disableSpeech : t.nav.enableSpeech}
+              >
+                {enableSpeech ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+            )}
+            
+            {/* Thinking Mode Toggle */}
+            <button
+              onClick={() => setThinkingMode(!thinkingMode)}
+              className={`btn-ghost ${thinkingMode ? 'text-tokyo-600' : ''}`}
+              title={thinkingMode ? '思考モードをOFF' : '思考モードをON'}
+            >
+              <Brain className={`w-4 h-4 ${thinkingMode ? 'text-tokyo-600' : ''}`} />
+            </button>
+
+            {/* Theme Toggle */}
+            <ThemeToggleSimple />
+            
             {/* Clear Chat Button */}
             <button
-              onClick={async () => await clearChat()}
-              className="p-2 rounded-md bg-white bg-opacity-20 hover:bg-opacity-30 transition-colors"
-              title="チャットをクリア"
+              onClick={async () => {
+                try {
+                  await clearChat();
+                  clearStreamingState(); // ストリーミング状態もクリア
+                  // 通知を表示しない
+                } catch (error) {
+                  console.error('Clear chat error:', error);
+                  toast.error(t.errors.clearChatFailed);
+                }
+              }}
+              className="btn-ghost"
+              title={t.nav.clearChat}
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -148,118 +281,190 @@ export default function ChatInterface() {
       </header>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center py-8">
-            <div className="max-w-md mx-auto bg-white rounded-lg p-6 border">
-              <h2 className="text-lg font-semibold text-gray-800 mb-2">
-                {language === 'ja' ? 'ようこそ！' : 'Welcome!'}
-              </h2>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                {getWelcomeMessage()}
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            onPlayAudio={handlePlayAudio}
-          />
-        ))}
-        
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 max-w-xs">
-              <div className="flex items-center space-x-2">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+      <main 
+        className="flex-1 overflow-y-auto px-6 py-8 custom-scrollbar"
+        role="main"
+        aria-label={t.a11y.chatMessages}
+        aria-live="polite"
+        aria-relevant="additions"
+      >
+        <div className="max-w-4xl mx-auto space-y-6">
+          {messages.length === 0 && (
+            <div className="empty-state">
+              <div className="empty-state-content">
+                <div className="w-16 h-16 bg-gradient-to-br from-tokyo-400 to-tokyo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-soft">
+                  <Sparkles className="w-8 h-8 text-white" />
                 </div>
-                <span className="text-sm text-gray-500">
-                  {language === 'ja' ? '入力中...' : 'Typing...'}
-                </span>
+                <h2 className="empty-state-title">
+                  {t.chat.welcomeTitle}
+                </h2>
+                <p className="empty-state-description">
+                  {t.chat.welcomeMessage}
+                </p>
               </div>
             </div>
-          </div>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div className="border-t bg-white p-4">
-        <div className="flex items-end space-x-2">
-          <div className="flex-1">
-            <textarea
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={
-                language === 'ja' 
-                  ? 'メッセージを入力してください...' 
-                  : 'Enter your message...'
-              }
-              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-tokyo-blue focus:border-transparent"
-              rows={1}
-              disabled={isLoading}
+          )}
+          
+          {/* 思考過程の表示 (ストリーミング中) */}
+          {thinkingMode && streamingState.isStreaming && (
+            <ThinkingProcess
+              visible={true}
+              steps={streamingState.steps}
+              onComplete={() => {
+                // ストリーミング完了時の処理
+                if (streamingState.finalResult) {
+                  // 最終結果をメッセージとして追加する処理が必要
+                  console.log('Streaming completed:', streamingState.finalResult);
+                }
+              }}
             />
-          </div>
+          )}
+
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+            />
+          ))}
           
-          {/* Voice Input Button */}
-          <button
-            onClick={handleVoiceToggle}
-            disabled={isLoading}
-            className={`p-3 rounded-lg transition-colors duration-200 ${
-              isRecording
-                ? 'bg-red-500 text-white voice-recording'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={isRecording ? '録音停止' : '音声入力'}
-          >
-            {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-          </button>
+          {isLoading && (
+            <TypingIndicator name="AI" />
+          )}
           
-          {/* Send Button */}
-          <button
-            onClick={handleSendMessage}
-            disabled={!inputText.trim() || isLoading}
-            className={`p-3 rounded-lg transition-colors duration-200 ${
-              inputText.trim() && !isLoading
-                ? 'bg-tokyo-blue text-white hover:bg-blue-700'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
-            title="送信"
-          >
-            <Send className="w-5 h-5" />
-          </button>
+          <div ref={messagesEndRef} />
         </div>
-        
-        {/* Voice Recording Indicator */}
-        {isRecording && (
-          <div className="flex items-center justify-center mt-2 space-x-2">
-            <div className="voice-visualizer">
-              {[...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  className="voice-bar"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                />
-              ))}
+      </main>
+
+      {/* Modern Input Area */}
+      <div className="bg-white dark:bg-primary-800 border-t border-primary-100 dark:border-primary-700 px-6 py-4">
+        <div className="max-w-4xl mx-auto">
+          {/* Voice Recording Indicator */}
+          {isRecording && (
+            <div className="mb-4">
+              <div className="voice-indicator">
+                <div className="voice-waveform">
+                  <div className="voice-bar"></div>
+                  <div className="voice-bar"></div>
+                  <div className="voice-bar"></div>
+                  <div className="voice-bar"></div>
+                  <div className="voice-bar"></div>
+                </div>
+                <span className="text-sm font-medium">
+                  {t.chat.recording}
+                </span>
+              </div>
+              
+              {/* Real-time Transcription Display */}
+              {speechRecognitionSupported && (
+                <div className="mt-3 p-3 bg-primary-50 dark:bg-primary-800 rounded-lg border-l-4 border-tokyo-500">
+                  <div className="text-sm text-primary-600 dark:text-primary-300 mb-2">
+                    リアルタイム文字起こし:
+                  </div>
+                  <div className="text-base text-primary-900 dark:text-primary-100 min-h-6">
+                    {finalTranscript && (
+                      <span className="text-primary-900 dark:text-primary-100">
+                        {finalTranscript}
+                      </span>
+                    )}
+                    {interimTranscript && (
+                      <span className="text-primary-500 dark:text-primary-400 italic">
+                        {interimTranscript}
+                      </span>
+                    )}
+                    {!finalTranscript && !interimTranscript && (
+                      <span className="text-primary-400 dark:text-primary-500">
+                        話してください...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <span className="text-sm text-red-500">
-              {language === 'ja' ? '録音中...' : 'Recording...'}
-            </span>
-          </div>
-        )}
+          )}
+          
+          <div className="flex items-end space-x-3">
+              <div className="flex-1">
+                <textarea
+                ref={inputRef}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={t.chat.inputPlaceholder}
+                className="input-modern resize-none h-12 min-h-12 max-h-32"
+                rows={1}
+                disabled={false}
+                aria-label={t.a11y.messageInputField}
+                aria-describedby="input-help"
+                aria-invalid={false}
+                style={{
+                  height: 'auto',
+                  minHeight: '3rem',
+                }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
+                }}
+              />
+            </div>
+            
+            {/* Voice Input Button */}
+            <button
+              onClick={handleVoiceToggle}
+              disabled={false}
+              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                isRecording
+                  ? 'bg-error text-white shadow-lg animate-pulse-subtle'
+                  : 'bg-primary-100 text-primary-600 hover:bg-primary-200'
+              } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              aria-label={isRecording ? t.chat.stopVoiceInput : t.chat.startVoiceInput}
+              aria-pressed={isRecording}
+              type="button"
+            >
+              {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
+            
+            {/* Send Button */}
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputText.trim()}
+              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                inputText.trim()
+                  ? 'bg-primary-900 text-white hover:bg-primary-800 shadow-sm'
+                  : 'bg-primary-100 text-primary-400 cursor-not-allowed'
+              }`}
+              aria-label={t.chat.sendMessage}
+              type="submit"
+              aria-disabled={!inputText.trim()}
+            >
+              <Send className="w-5 h-5" />
+            </button>
+            </div>
+        </div>
       </div>
       
       {/* Hidden audio element for playback */}
       <audio ref={audioRef} style={{ display: 'none' }} />
     </div>
+  );
+}
+
+export default function ChatInterface() {
+  const [currentLanguage, setCurrentLanguage] = useState<'ja' | 'en' | 'zh' | 'ko'>('ja');
+
+  const handleLanguageChange = useCallback((language: 'ja' | 'en' | 'zh' | 'ko') => {
+    console.log('ChatInterface: Language change handler called with:', language);
+    setCurrentLanguage(language);
+    console.log('ChatInterface: State updated to:', language);
+  }, []);
+
+  useEffect(() => {
+    console.log('ChatInterface: Current language state changed to:', currentLanguage);
+  }, [currentLanguage]);
+
+  return (
+    <I18nProvider language={currentLanguage} onLanguageChange={handleLanguageChange}>
+      <ChatInterfaceInner />
+    </I18nProvider>
   );
 }

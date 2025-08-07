@@ -13,17 +13,17 @@ export default function Home() {
 
   if (!isClient) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-primary-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-tokyo-blue mx-auto mb-4"></div>
-          <p className="text-gray-600">読み込み中...</p>
+          <div className="w-12 h-12 border-2 border-primary-300 border-t-primary-900 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-primary-600 font-medium">読み込み中...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-primary-50">
       <ChatInterface />
       <PWAInstaller />
     </main>
